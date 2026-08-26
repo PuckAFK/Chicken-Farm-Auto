@@ -1,4 +1,4 @@
--- Chicken Farm Autofarm v10.1 - Full Chicken Farm Build
+-- Chicken Farm Autofarm v10.2 - Full Chicken Farm Build + Compatibility Mode
 -- Built from the game's own client routes / progression logic.
 -- Chicken Farm only: wrong-place execution exits safely instead of teleporting.
 -- Client-originated place changes AND same-place server hops are blocked when possible.
@@ -28,26 +28,11 @@ local EarlyPlayers = game:GetService("Players")
 local EarlyTeleportService = game:GetService("TeleportService")
 local EarlyLocalPlayer = EarlyPlayers.LocalPlayer or EarlyPlayers.PlayerAdded:Wait()
 
--- Chicken Farm-only safety guard.
--- Do NOT teleport the player when this file is executed from another game.
--- The actual Chicken Farm remotes/modules only exist in its own place, so
--- attempting to continue elsewhere would only produce missing-module errors.
-if game.PlaceId ~= MAIN_PLACE_ID then
-    local message = "Chicken Farm script only works in PlaceId " .. tostring(MAIN_PLACE_ID)
-        .. " (current PlaceId: " .. tostring(game.PlaceId) .. ")"
-
-    warn("[Chicken Farm] " .. message)
-
-    pcall(function()
-        game:GetService("StarterGui"):SetCore("SendNotification", {
-            Title = "Chicken Farm",
-            Text = message,
-            Duration = 8,
-        })
-    end)
-
-    return
-end
+-- Cross-game compatibility mode.
+-- In the real Chicken Farm place we use its actual modules/remotes. Elsewhere
+-- the same full UI is allowed to load with a harmless local backend so manual
+-- loader selection never teleports, errors, or stops at startup.
+local CROSS_GAME_MODE = game.PlaceId ~= MAIN_PLACE_ID
 
 -- Minimal startup indicator. If startup fails, leave this visible with the
 -- exact stage instead of silently returning.
@@ -69,7 +54,7 @@ do
         BootLabel.TextColor3 = Color3.fromRGB(240, 240, 245)
         BootLabel.Font = Enum.Font.GothamMedium
         BootLabel.TextSize = 14
-        BootLabel.Text = "Chicken Farm v10.1: starting..."
+        BootLabel.Text = "Chicken Farm v10.2: starting..."
         BootLabel.Parent = BootGui
 
         local parent
@@ -90,11 +75,11 @@ end
 
 local function bootStatus(text)
     if BootLabel then
-        pcall(function() BootLabel.Text = "Chicken Farm v10.1: " .. tostring(text) end)
+        pcall(function() BootLabel.Text = "Chicken Farm v10.2: " .. tostring(text) end)
     end
 end
 
-bootStatus("loading core game modules...")
+bootStatus(CROSS_GAME_MODE and "starting compatibility mode..." or "loading core game modules...")
 
 local PreviousState
 local PreviousConfig
@@ -130,6 +115,70 @@ local Luckyblocks
 local GlobalEvents
 
 local ok, err = pcall(function()
+    if CROSS_GAME_MODE then
+        -- Same script/UI, harmless compatibility backend. Nothing here attempts
+        -- to imitate or modify Chicken Farm's real server state.
+        local compatStats = {
+            Cash = 0, Eggs = 0, EggsProcessing = 0, TotalChickens = 0,
+            Chickens = 0, Rebirth = 0, CashCollect = 0, Gems = 0,
+            Friends = 0, InGroup = false, LastGroupClaim = 0,
+            ProcessLevel = 0, ProcessingLevel = 0, ProcessSpeedUpgrade = 0,
+            BuyTierLevel = 1, EquippedLuckyBlock = 0, Tutorial = true,
+            AwardedChicken = 0,
+        }
+
+        Paper = {
+            Network = {
+                InvokeServer = function()
+                    return false, "Chicken Farm backend unavailable in this place"
+                end,
+                FireServer = function()
+                    return false
+                end,
+            },
+            Stats = {
+                LoadedAsync = function() return true end,
+                GetValue = function(a, b)
+                    local name = b or a
+                    return compatStats[name]
+                end,
+                Changed = function()
+                    return nil
+                end,
+            },
+            Number = {
+                format = function(value)
+                    return tostring(value or 0)
+                end,
+            },
+            Misc = {
+                GetUnixTime = function() return os.time() end,
+            },
+        }
+
+        ChickenMath = {
+            GetProcessAmount = function() return 1 end,
+            GetUpgradeBoost = function() return 1 end,
+            GetRebirthReq = function() return math.huge end,
+            GetRebirthBoost = function() return 1 end,
+            GetBuyChickenCost = function() return math.huge end,
+            GetLuckyBlockCost = function() return math.huge end,
+            GetUpgTierReq = function() return math.huge end,
+            GetUpgTierCost = function() return math.huge end,
+            GetProcessCost = function() return math.huge end,
+            GetUpgradeCost = function() return math.huge end,
+        }
+
+        ChickenTable = {}
+        for i = 1, 64 do ChickenTable[i] = {} end
+        Luckyblocks = { Blocks = {} }
+        GlobalEvents = {
+            GetBoost = function() return 1 end,
+            IsActive = function() return false end,
+        }
+        return
+    end
+
     -- Slow joins can replicate the game framework several seconds after the
     -- Roblox loading screen disappears. Give all required paths one shared
     -- 30-second startup window instead of timing each path independently.
@@ -196,7 +245,7 @@ end)
 if not ok or not Paper or not Paper.Network or not Paper.Stats then
     local fail = "core modules failed: " .. tostring(err)
     bootStatus(fail)
-    warn("[Chicken Farm Autofarm v10.1] " .. fail)
+    warn("[Chicken Farm Autofarm v10.2] " .. fail)
     return
 end
 
@@ -213,7 +262,7 @@ else
 end
 
 local Farm = {
-    Version = 10.1,
+    Version = 10.2,
     Running = true,
     Connections = {},
     EggAttempts = {},
@@ -224,7 +273,7 @@ local Farm = {
     RouteFailures = {},
     RouteAdaptive = {},
     ReactiveLocks = {},
-    LastAction = "Starting...",
+    LastAction = CROSS_GAME_MODE and "Compatibility mode - real Chicken Farm backend is unavailable here" or "Starting...",
     LastError = "",
     MasterEnabled = true,
     SpendBusy = false,
@@ -320,7 +369,7 @@ local Farm = {
         SmartSpending = true,
         EventAware = true,
         SmartRebirth = true,
-        LockMainPlace = true,
+        LockMainPlace = not CROSS_GAME_MODE,
         AutoRebirth = false,
     }
 }
@@ -1087,34 +1136,36 @@ end
 
 -- Listen to the game's multiplexed network event so we retain the ORIGINAL
 -- egg id before Roblox converts it to Instance.Name text.
-local remotesFolder = ReplicatedStorage:WaitForChild("Paper"):WaitForChild("Remotes")
-local rawEvent = remotesFolder:WaitForChild("__remoteevent")
+if not CROSS_GAME_MODE then
+    local remotesFolder = ReplicatedStorage:WaitForChild("Paper"):WaitForChild("Remotes")
+    local rawEvent = remotesFolder:WaitForChild("__remoteevent")
 
-track(rawEvent.OnClientEvent:Connect(function(route, ...)
-    if not Farm.Running or not Farm.MasterEnabled then
-        return
-    end
-
-    local args = table.pack(...)
-
-    if route == "Egg Dropped" then
-        local id = args[1]
-        rememberEggId(id)
-        if Farm.State.AutoEggs then
-            startEggWorker(id)
+    track(rawEvent.OnClientEvent:Connect(function(route, ...)
+        if not Farm.Running or not Farm.MasterEnabled then
+            return
         end
-    elseif route == "LuckyBlock Dropped" and Farm.State.AutoLuckyBlocks then
-        local id = args[1]
-        task.delay(0.15, collectLuckyId, id)
-    elseif route == "PAPER_COLLECTABLE_CREATED" and Farm.State.AutoCollectables then
-        local id = args[1]
-        if id ~= nil then
-            task.defer(function()
-                fire("PAPER_COLLECT_COLLECTABLE", id)
-            end)
+
+        local args = table.pack(...)
+
+        if route == "Egg Dropped" then
+            local id = args[1]
+            rememberEggId(id)
+            if Farm.State.AutoEggs then
+                startEggWorker(id)
+            end
+        elseif route == "LuckyBlock Dropped" and Farm.State.AutoLuckyBlocks then
+            local id = args[1]
+            task.delay(0.15, collectLuckyId, id)
+        elseif route == "PAPER_COLLECTABLE_CREATED" and Farm.State.AutoCollectables then
+            local id = args[1]
+            if id ~= nil then
+                task.defer(function()
+                    fire("PAPER_COLLECT_COLLECTABLE", id)
+                end)
+            end
         end
-    end
-end))
+    end))
+end
 
 -- React immediately to newly-parented egg models as a second path in case the
 -- network event was missed or the script was injected during a spawn burst.
