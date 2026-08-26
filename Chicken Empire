@@ -1787,7 +1787,7 @@ end
 applyProfile(Farm.Config.Profile)
 
 local Window = ChickenUI:CreateWindow({
-    Name = "Chicken Farm • v11.1",
+    Name = "Chicken Farm • v11.2.1",
     LoadingTitle = "Chicken Farm Autofarm",
     LoadingSubtitle = "PuckAFK • adaptive progression",
     ConfigurationSaving = {Enabled = false},
@@ -2115,9 +2115,9 @@ task.spawn(function()
 end)
 
 ChickenUI:Notify({
-    Title = "Chicken Farm v10 loaded",
-    Content = "Interface ready. Right Shift toggles the interface.",
+    Title = "Chicken Farm v11.2 loaded",
+    Content = "Interface ready. Change the UI keybind from Settings.",
     Duration = 4,
 })
 
-print("[Chicken Farm Autofarm v10] Loaded - adaptive progression interface ready")
+print("[Chicken Farm Autofarm v11.2] Loaded - adaptive progression interface ready")
