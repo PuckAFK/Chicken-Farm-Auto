@@ -1787,7 +1787,7 @@ end
 applyProfile(Farm.Config.Profile)
 
 local Window = ChickenUI:CreateWindow({
-    Name = "Chicken Farm • v11",
+    Name = "Chicken Farm • v11.1",
     LoadingTitle = "Chicken Farm Autofarm",
     LoadingSubtitle = "PuckAFK • adaptive progression",
     ConfigurationSaving = {Enabled = false},
@@ -1966,12 +1966,6 @@ local EconomyParagraph = StatsTab:CreateParagraph({Title = "Economy", Content = 
 local PerformanceParagraph = StatsTab:CreateParagraph({Title = "Farm Performance", Content = "Loading..."})
 local OptimizerParagraph = StatsTab:CreateParagraph({Title = "Optimizer", Content = "Loading..."})
 
-SettingsTab:CreateSection("Interface")
-SettingsTab:CreateLabel("Right Shift • hide/show the entire hub")
-SettingsTab:CreateLabel("The farm continues running while the window is hidden.")
-SettingsTab:CreateButton({Name = "Hide UI", Callback = function()
-    if Window and Window.Main then Window.Main.Visible = false end
-end})
 SettingsTab:CreateSection("Script")
 SettingsTab:CreateButton({Name = "Disable every farm toggle", Callback = function()
     Farm.MasterEnabled = false
@@ -2008,14 +2002,6 @@ end)
 SettingsTab:CreateButton({Name = "Unload Chicken Farm v11", Callback = function()
     Farm:Unload()
 end})
-
--- Right Shift shows/hides the interface without stopping the farm.
-track(UserInputService.InputBegan:Connect(function(input, processed)
-    if processed then return end
-    if input.KeyCode == Enum.KeyCode.RightShift and Window and Window.Main then
-        Window.Main.Visible = not Window.Main.Visible
-    end
-end))
 
 -- Session baselines for useful gain stats.
 Farm.Metrics.StartCash = safeNumber(stat("Cash"), 0)
