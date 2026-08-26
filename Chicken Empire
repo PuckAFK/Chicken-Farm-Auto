@@ -1,3 +1,11 @@
+-- Chicken Farm Autofarm v10.1 - Full Chicken Farm Build
+-- Built from the game's own client routes / progression logic.
+-- Chicken Farm only: wrong-place execution exits safely instead of teleporting.
+-- Client-originated place changes AND same-place server hops are blocked when possible.
+-- Server-forced transfers are checked after teleport and returned to the original server instance when queueing is supported.
+-- Progression logic uses the game's ChickenMath, Luckyblocks and GlobalEvents modules when available.
+-- Re-run safe: executing a new copy shuts down the previous copy first.
+
 local GENV = (getgenv and getgenv()) or _G
 
 -- This experience exposes two places in ReplicatedStorage.Paper.Shared.Config:
@@ -20,15 +28,24 @@ local EarlyPlayers = game:GetService("Players")
 local EarlyTeleportService = game:GetService("TeleportService")
 local EarlyLocalPlayer = EarlyPlayers.LocalPlayer or EarlyPlayers.PlayerAdded:Wait()
 
--- If manually executed in the wrong place, request the main place once.
--- No self-source/template/bootstrap is involved, so failure here cannot break
--- normal startup while already in the farm.
+-- Chicken Farm-only safety guard.
+-- Do NOT teleport the player when this file is executed from another game.
+-- The actual Chicken Farm remotes/modules only exist in its own place, so
+-- attempting to continue elsewhere would only produce missing-module errors.
 if game.PlaceId ~= MAIN_PLACE_ID then
-    GENV.__CHICKEN_FARM_ALLOW_TELEPORT = true
+    local message = "Chicken Farm script only works in PlaceId " .. tostring(MAIN_PLACE_ID)
+        .. " (current PlaceId: " .. tostring(game.PlaceId) .. ")"
+
+    warn("[Chicken Farm] " .. message)
+
     pcall(function()
-        EarlyTeleportService:Teleport(MAIN_PLACE_ID, EarlyLocalPlayer)
+        game:GetService("StarterGui"):SetCore("SendNotification", {
+            Title = "Chicken Farm",
+            Text = message,
+            Duration = 8,
+        })
     end)
-    GENV.__CHICKEN_FARM_ALLOW_TELEPORT = false
+
     return
 end
 
@@ -52,7 +69,7 @@ do
         BootLabel.TextColor3 = Color3.fromRGB(240, 240, 245)
         BootLabel.Font = Enum.Font.GothamMedium
         BootLabel.TextSize = 14
-        BootLabel.Text = "Chicken Farm v9: starting..."
+        BootLabel.Text = "Chicken Farm v10.1: starting..."
         BootLabel.Parent = BootGui
 
         local parent
@@ -73,7 +90,7 @@ end
 
 local function bootStatus(text)
     if BootLabel then
-        pcall(function() BootLabel.Text = "Chicken Farm v9: " .. tostring(text) end)
+        pcall(function() BootLabel.Text = "Chicken Farm v10.1: " .. tostring(text) end)
     end
 end
 
@@ -113,39 +130,73 @@ local Luckyblocks
 local GlobalEvents
 
 local ok, err = pcall(function()
-    -- Core modules existed in the working v7 build. Use bounded waits so a live
-    -- game update cannot leave the script hanging forever before GUI creation.
-    local paperModule = ReplicatedStorage:WaitForChild("Paper", 8)
-    local modulesFolder = ReplicatedStorage:WaitForChild("Modules", 8)
-    local sharedFolder = modulesFolder and modulesFolder:WaitForChild("Shared", 8)
-    local chickenModule = sharedFolder and sharedFolder:WaitForChild("Chickens", 8)
-    local tablesFolder = ReplicatedStorage:WaitForChild("Tables", 8)
-    local chickenTableModule = tablesFolder and tablesFolder:WaitForChild("Chickens", 8)
+    -- Slow joins can replicate the game framework several seconds after the
+    -- Roblox loading screen disappears. Give all required paths one shared
+    -- 30-second startup window instead of timing each path independently.
+    local deadline = os.clock() + 30
+
+    local function waitPath(root, path)
+        local current = root
+
+        for _, childName in ipairs(path) do
+            local child = current:FindFirstChild(childName)
+
+            while not child and os.clock() < deadline do
+                task.wait(0.05)
+                child = current:FindFirstChild(childName)
+            end
+
+            if not child then
+                return nil
+            end
+
+            current = child
+        end
+
+        return current
+    end
+
+    local paperModule = waitPath(ReplicatedStorage, {"Paper"})
+    local chickenModule = waitPath(ReplicatedStorage, {"Modules", "Shared", "Chickens"})
+    local chickenTableModule = waitPath(ReplicatedStorage, {"Tables", "Chickens"})
 
     if not paperModule or not chickenModule or not chickenTableModule then
-        error("Core Chicken Farm modules were not found in time")
+        error(
+            "Required Chicken Farm modules did not replicate within 30 seconds "
+            .. "(Paper=" .. tostring(paperModule ~= nil)
+            .. ", ChickensModule=" .. tostring(chickenModule ~= nil)
+            .. ", ChickensTable=" .. tostring(chickenTableModule ~= nil) .. ")"
+        )
     end
 
     Paper = require(paperModule)
     ChickenMath = require(chickenModule)
     ChickenTable = require(chickenTableModule)
 
-    -- Optional optimizer modules must NEVER block startup.
+    -- Optional optimizer modules never block startup.
+    local tablesFolder = ReplicatedStorage:FindFirstChild("Tables")
+    local modulesFolder = ReplicatedStorage:FindFirstChild("Modules")
+    local sharedFolder = modulesFolder and modulesFolder:FindFirstChild("Shared")
+
     local luckyModule = tablesFolder and tablesFolder:FindFirstChild("Luckyblocks")
     if luckyModule then
-        pcall(function() Luckyblocks = require(luckyModule) end)
+        pcall(function()
+            Luckyblocks = require(luckyModule)
+        end)
     end
 
     local globalModule = sharedFolder and sharedFolder:FindFirstChild("GlobalEvents")
     if globalModule then
-        pcall(function() GlobalEvents = require(globalModule) end)
+        pcall(function()
+            GlobalEvents = require(globalModule)
+        end)
     end
 end)
 
 if not ok or not Paper or not Paper.Network or not Paper.Stats then
     local fail = "core modules failed: " .. tostring(err)
     bootStatus(fail)
-    warn("[Chicken Farm Autofarm v9] " .. fail)
+    warn("[Chicken Farm Autofarm v10.1] " .. fail)
     return
 end
 
@@ -162,7 +213,7 @@ else
 end
 
 local Farm = {
-    Version = 9,
+    Version = 10.1,
     Running = true,
     Connections = {},
     EggAttempts = {},
